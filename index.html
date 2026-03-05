@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Instagram‑галерея с выбором</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background: #000;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Верхняя панель */
+        .top-bar {
+            background: #111;
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .copy-btn {
+            background: #0095f6;
+            border: none;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            padding: 10px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: background 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .copy-btn:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .copy-btn:not(:disabled):hover {
+            background: #0077cc;
+        }
+
+        /* Основной просмотрщик */
+        .viewer {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #0a0a0a;
+            position: relative;
+            touch-action: pan-y pinch-zoom; /* запрещаем вертикальный свайп страницы */
+        }
+
+        .image-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        /* Соотношение 3:4, изображение вписывается целиком */
+        .image-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: calc((100vh - 70px) * 3 / 4); /* 70px — высота top-bar */
+            height: 100%;
+            max-height: calc(100vh - 70px);
+            aspect-ratio: 3 / 4;
+            background: #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.6);
+        }
+
+        .image-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            pointer-events: none; /* клики идут на контейнер */
+        }
+
+        /* Галочка выбора */
+        .image-wrapper.selected::after {
+            content: "✓";
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 40px;
+            height: 40px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 20;
+            border: 2px solid white;
+        }
+
+        /* Индикатор текущей позиции (необязательно, но удобно) */
+        .position-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 14px;
+            backdrop-filter: blur(4px);
+            border: 1px solid #444;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* Модальное окно со списком выбранных */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #222;
+            border-radius: 20px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            color: white;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        .modal-content h3 {
+            margin-bottom: 16px;
+            font-weight: 400;
+            font-size: 20px;
+            color: #ddd;
+        }
+
+        .modal-textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: white;
+            font-size: 14px;
+            font-family: monospace;
+            resize: vertical;
+            margin-bottom: 20px;
+        }
+
+        .modal-textarea:focus {
+            outline: none;
+            border-color: #0095f6;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            background: #0095f6;
+            border: none;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .modal-btn.secondary {
+            background: #3a3a3a;
+        }
+
+        .modal-btn.secondary:hover {
+            background: #505050;
+        }
+
+        .modal-btn:hover {
+            background: #0077cc;
+        }
+
+        @media (max-width: 600px) {
+            .top-bar {
+                padding: 10px 12px;
+            }
+            .copy-btn {
+                font-size: 14px;
+                padding: 8px 16px;
+            }
+            .image-wrapper.selected::after {
+                width: 36px;
+                height: 36px;
+                font-size: 20px;
+                top: 12px;
+                right: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button class="copy-btn" id="copySelectedBtn" disabled>📋 Копировать выбранные (0)</button>
+    </div>
+
+    <div class="viewer" id="viewer">
+        <div class="image-container" id="imageContainer">
+            <div class="image-wrapper" id="imageWrapper">
+                <img id="currentImage" src="" alt="Фото">
+            </div>
+        </div>
+        <div class="position-indicator" id="positionIndicator">1 / 1</div>
+    </div>
+
+    <!-- Модальное окно со списком выбранных ссылок -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <h3>Выбранные изображения</h3>
+            <textarea class="modal-textarea" id="selectedUrlsList" readonly placeholder="Нет выбранных фото..."></textarea>
+            <div class="modal-actions">
+                <button class="modal-btn secondary" id="closeModalBtn">Закрыть</button>
+                <button class="modal-btn" id="copyModalBtn">📋 Копировать</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ----- СПИСОК ФОТОГРАФИЙ (можно заменить на свои URL) -----
+            const images = [
+                'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
+                'https://images.unsplash.com/photo-1519681393784-d120267933ba',
+                'https://images.unsplash.com/photo-1501785888041-af3ef285b470',
+                'https://images.unsplash.com/photo-1518837695005-2083093ee35b',
+                'https://images.unsplash.com/photo-1493246507139-91e8fad9978e',
+                'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07'
+            ];
+
+            // Текущий индекс
+            let currentIndex = 0;
+            // Массив выбранных ссылок (храним URL)
+            let selectedUrls = [];
+
+            // Элементы DOM
+            const imageWrapper = document.getElementById('imageWrapper');
+            const currentImage = document.getElementById('currentImage');
+            const positionIndicator = document.getElementById('positionIndicator');
+            const copyBtn = document.getElementById('copySelectedBtn');
+            const modal = document.getElementById('modal');
+            const selectedUrlsList = document.getElementById('selectedUrlsList');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const copyModalBtn = document.getElementById('copyModalBtn');
+            const imageContainer = document.getElementById('imageContainer');
+
+            // ---- Инициализация ----
+            function loadImage(index) {
+                if (index < 0 || index >= images.length) return;
+                currentIndex = index;
+                currentImage.src = images[currentIndex];
+                positionIndicator.textContent = `${currentIndex+1} / ${images.length}`;
+                updateSelectedVisual();
+            }
+
+            // Обновление визуального состояния выбора (галочка)
+            function updateSelectedVisual() {
+                const currentUrl = images[currentIndex];
+                if (selectedUrls.includes(currentUrl)) {
+                    imageWrapper.classList.add('selected');
+                } else {
+                    imageWrapper.classList.remove('selected');
+                }
+            }
+
+            // Переключение выбора текущего фото
+            function toggleCurrentSelection() {
+                const url = images[currentIndex];
+                const idx = selectedUrls.indexOf(url);
+                if (idx === -1) {
+                    selectedUrls.push(url);
+                } else {
+                    selectedUrls.splice(idx, 1);
+                }
+                updateSelectedVisual();
+                updateCopyButtonState();
+            }
+
+            // Обновление текста кнопки и её доступности
+            function updateCopyButtonState() {
+                const count = selectedUrls.length;
+                copyBtn.textContent = `📋 Копировать выбранные (${count})`;
+                copyBtn.disabled = count === 0;
+            }
+
+            // Показать модальное окно со списком выбранных
+            function showModal() {
+                if (selectedUrls.length === 0) return;
+                selectedUrlsList.value = selectedUrls.join('\n');
+                modal.classList.add('active');
+            }
+
+            // Скрыть модальное окно
+            function hideModal() {
+                modal.classList.remove('active');
+            }
+
+            // Копирование текста из textarea в буфер обмена
+            function copySelectedUrls() {
+                selectedUrlsList.select();
+                document.execCommand('copy');
+                // Можно показать уведомление, но ограничимся изменением текста кнопки
+                const originalText = copyModalBtn.textContent;
+                copyModalBtn.textContent = '✅ Скопировано!';
+                setTimeout(() => {
+                    copyModalBtn.textContent = originalText;
+                }, 1500);
+            }
+
+            // ---- Навигация ----
+            function nextPhoto() {
+                if (currentIndex < images.length - 1) {
+                    loadImage(currentIndex + 1);
+                }
+            }
+
+            function prevPhoto() {
+                if (currentIndex > 0) {
+                    loadImage(currentIndex - 1);
+                }
+            }
+
+            // ---- Свайп (touch) ----
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const MIN_SWIPE_DISTANCE = 50; // минимальное расстояние для свайпа
+
+            imageContainer.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            imageContainer.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, { passive: true });
+
+            function handleSwipe() {
+                const diff = touchStartX - touchEndX;
+                if (Math.abs(diff) < MIN_SWIPE_DISTANCE) {
+                    // Малое перемещение — считаем кликом (выбор)
+                    toggleCurrentSelection();
+                } else if (diff > 0) {
+                    // Свайп влево → следующее фото
+                    nextPhoto();
+                } else {
+                    // Свайп вправо → предыдущее фото
+                    prevPhoto();
+                }
+                // Сброс
+                touchStartX = 0;
+                touchEndX = 0;
+            }
+
+            // Обработка клика мышью (для десктопа) — просто выбор
+            imageContainer.addEventListener('click', () => {
+                toggleCurrentSelection();
+            });
+
+            // ---- Клавиатура (стрелки вверх/вниз) ----
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault(); // предотвращаем скролл страницы
+                    nextPhoto();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    prevPhoto();
+                }
+            });
+
+            // ---- Кнопка копирования (верхняя) ----
+            copyBtn.addEventListener('click', showModal);
+
+            // ---- Модальное окно ----
+            closeModalBtn.addEventListener('click', hideModal);
+            copyModalBtn.addEventListener('click', () => {
+                copySelectedUrls();
+                // Можно оставить окно открытым или закрыть через пару секунд
+                setTimeout(hideModal, 1500);
+            });
+
+            // Закрытие по клику на фон
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) hideModal();
+            });
+
+            // Загружаем первое фото
+            loadImage(0);
+            updateCopyButtonState();
+
+            // Дополнительно: на случай ошибки загрузки изображения
+            currentImage.onerror = function() {
+                this.src = 'https://via.placeholder.com/600x800/ff6b6b/ffffff?text=Ошибка+загрузки';
+            };
+        })();
+    </script>
+</body>
+</html>
