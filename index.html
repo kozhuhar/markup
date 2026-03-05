@@ -292,7 +292,7 @@
             let containerHeight = 0;   // высота viewer (будем обновлять при старте)
 
             // Порог переключения (в долях от высоты)
-            const SWIPE_THRESHOLD = 0.2; // 20% высоты
+            const SWIPE_THRESHOLD = 0.05; // 20% высоты
 
             // Предзагрузка (кэш)
             const imageCache = new Map();
@@ -411,7 +411,7 @@
                     // Свайп вниз (палец двигался вниз) -> предыдущее фото
                     // Цель: сместить стек вниз на полную высоту (чтобы предыдущее фото встало в центр)
                     const targetY = containerHeight; // смещение вниз
-                    animateStack(dragOffset, targetY, 300, () => {
+                    animateStack(dragOffset, targetY, 200, () => {
                         // Переключаем индекс и обновляем содержимое
                         currentIndex--;
                         updateItems();
@@ -421,7 +421,7 @@
                 } else if (dragOffset < -thresholdPx && currentIndex < images.length - 1) {
                     // Свайп вверх -> следующее фото
                     const targetY = -containerHeight;
-                    animateStack(dragOffset, targetY, 300, () => {
+                    animateStack(dragOffset, targetY, 200, () => {
                         currentIndex++;
                         updateItems();
                         stack.style.transform = 'translateY(0)';
