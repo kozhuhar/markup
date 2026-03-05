@@ -20,7 +20,6 @@
             overflow: hidden;
         }
 
-        /* Верхняя панель */
         .top-bar {
             background: #111;
             color: white;
@@ -28,7 +27,6 @@
             display: flex;
             justify-content: flex-end;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             z-index: 10;
         }
 
@@ -42,7 +40,6 @@
             border-radius: 30px;
             cursor: pointer;
             transition: background 0.2s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
 
         .copy-btn:disabled {
@@ -55,7 +52,6 @@
             background: #0077cc;
         }
 
-        /* Основной просмотрщик */
         .viewer {
             flex: 1;
             display: flex;
@@ -63,7 +59,7 @@
             align-items: center;
             background: #0a0a0a;
             position: relative;
-            touch-action: pan-y pinch-zoom; /* запрещаем вертикальный свайп страницы */
+            touch-action: pan-y pinch-zoom; /* Запрещаем вертикальный свайп */
         }
 
         .image-container {
@@ -77,11 +73,10 @@
             position: relative;
         }
 
-        /* Соотношение 3:4, изображение вписывается целиком */
         .image-wrapper {
             position: relative;
             width: 100%;
-            max-width: calc((100vh - 70px) * 3 / 4); /* 70px — высота top-bar */
+            max-width: calc((100vh - 70px) * 3 / 4);
             height: 100%;
             max-height: calc(100vh - 70px);
             aspect-ratio: 3 / 4;
@@ -99,7 +94,6 @@
             pointer-events: none; /* клики идут на контейнер */
         }
 
-        /* Галочка выбора */
         .image-wrapper.selected::after {
             content: "✓";
             position: absolute;
@@ -120,7 +114,6 @@
             border: 2px solid white;
         }
 
-        /* Индикатор текущей позиции (необязательно, но удобно) */
         .position-indicator {
             position: absolute;
             bottom: 20px;
@@ -137,7 +130,7 @@
             pointer-events: none;
         }
 
-        /* Модальное окно со списком выбранных */
+        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -254,7 +247,6 @@
         <div class="position-indicator" id="positionIndicator">1 / 1</div>
     </div>
 
-    <!-- Модальное окно со списком выбранных ссылок -->
     <div class="modal" id="modal">
         <div class="modal-content">
             <h3>Выбранные изображения</h3>
@@ -268,7 +260,7 @@
 
     <script>
         (function() {
-            // ----- СПИСОК ФОТОГРАФИЙ (можно заменить на свои URL) -----
+            // ----- СПИСОК ФОТОГРАФИЙ -----
             const images = [
                 'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
                 'https://images.unsplash.com/photo-1519681393784-d120267933ba',
@@ -278,12 +270,10 @@
                 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07'
             ];
 
-            // Текущий индекс
             let currentIndex = 0;
-            // Массив выбранных ссылок (храним URL)
             let selectedUrls = [];
 
-            // Элементы DOM
+            // DOM элементы
             const imageWrapper = document.getElementById('imageWrapper');
             const currentImage = document.getElementById('currentImage');
             const positionIndicator = document.getElementById('positionIndicator');
@@ -294,7 +284,15 @@
             const copyModalBtn = document.getElementById('copyModalBtn');
             const imageContainer = document.getElementById('imageContainer');
 
-            // ---- Инициализация ----
+            // Переменные для свайпа
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchMoved = false;      // был ли значительный сдвиг
+            let touchStartTime = 0;
+            const SWIPE_THRESHOLD = 30;   // минимальное расстояние для свайпа (по X)
+            const MAX_TAP_DURATION = 300;  // максимальная длительность касания для тапа (мс)
+
+            // Загрузка изображения по индексу
             function loadImage(index) {
                 if (index < 0 || index >= images.length) return;
                 currentIndex = index;
@@ -303,7 +301,7 @@
                 updateSelectedVisual();
             }
 
-            // Обновление визуального состояния выбора (галочка)
+            // Обновление галочки
             function updateSelectedVisual() {
                 const currentUrl = images[currentIndex];
                 if (selectedUrls.includes(currentUrl)) {
@@ -326,30 +324,25 @@
                 updateCopyButtonState();
             }
 
-            // Обновление текста кнопки и её доступности
             function updateCopyButtonState() {
                 const count = selectedUrls.length;
                 copyBtn.textContent = `📋 Копировать выбранные (${count})`;
                 copyBtn.disabled = count === 0;
             }
 
-            // Показать модальное окно со списком выбранных
             function showModal() {
                 if (selectedUrls.length === 0) return;
                 selectedUrlsList.value = selectedUrls.join('\n');
                 modal.classList.add('active');
             }
 
-            // Скрыть модальное окно
             function hideModal() {
                 modal.classList.remove('active');
             }
 
-            // Копирование текста из textarea в буфер обмена
             function copySelectedUrls() {
                 selectedUrlsList.select();
                 document.execCommand('copy');
-                // Можно показать уведомление, но ограничимся изменением текста кнопки
                 const originalText = copyModalBtn.textContent;
                 copyModalBtn.textContent = '✅ Скопировано!';
                 setTimeout(() => {
@@ -357,7 +350,7 @@
                 }, 1500);
             }
 
-            // ---- Навигация ----
+            // Навигация
             function nextPhoto() {
                 if (currentIndex < images.length - 1) {
                     loadImage(currentIndex + 1);
@@ -370,46 +363,67 @@
                 }
             }
 
-            // ---- Свайп (touch) ----
-            let touchStartX = 0;
-            let touchEndX = 0;
-            const MIN_SWIPE_DISTANCE = 50; // минимальное расстояние для свайпа
-
+            // ---- Обработка касаний ----
             imageContainer.addEventListener('touchstart', (e) => {
-                touchStartX = e.changedTouches[0].screenX;
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                touchMoved = false;
+                touchStartTime = Date.now();
+                // Не отменяем событие, чтобы не блокировать скролл, но мы его контролируем через touch-action
             }, { passive: true });
+
+            imageContainer.addEventListener('touchmove', (e) => {
+                if (!touchStartX) return;
+                const touch = e.touches[0];
+                const dx = Math.abs(touch.clientX - touchStartX);
+                const dy = Math.abs(touch.clientY - touchStartY);
+                // Если движение по X превышает порог и больше, чем по Y (горизонтальный свайп)
+                if (dx > SWIPE_THRESHOLD && dx > dy) {
+                    touchMoved = true;
+                    // Предотвращаем скролл страницы только при явном горизонтальном свайпе
+                    e.preventDefault();
+                }
+            }, { passive: false });
 
             imageContainer.addEventListener('touchend', (e) => {
-                touchEndX = e.changedTouches[0].screenX;
-                handleSwipe();
-            }, { passive: true });
+                if (!touchStartX) return;
 
-            function handleSwipe() {
-                const diff = touchStartX - touchEndX;
-                if (Math.abs(diff) < MIN_SWIPE_DISTANCE) {
-                    // Малое перемещение — считаем кликом (выбор)
+                const touchEnd = e.changedTouches[0];
+                const dx = touchEnd.clientX - touchStartX;
+                const dy = touchEnd.clientY - touchStartY;
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+                const touchDuration = Date.now() - touchStartTime;
+
+                // Если было значительное движение по X и это был горизонтальный свайп
+                if (absDx > SWIPE_THRESHOLD && absDx > absDy) {
+                    // Свайп
+                    if (dx > 0) {
+                        prevPhoto(); // свайп вправо → предыдущее
+                    } else {
+                        nextPhoto(); // свайп влево → следующее
+                    }
+                } else if (!touchMoved && touchDuration < MAX_TAP_DURATION) {
+                    // Это короткий тап без перемещения – выбираем фото
                     toggleCurrentSelection();
-                } else if (diff > 0) {
-                    // Свайп влево → следующее фото
-                    nextPhoto();
-                } else {
-                    // Свайп вправо → предыдущее фото
-                    prevPhoto();
                 }
+
                 // Сброс
                 touchStartX = 0;
-                touchEndX = 0;
-            }
+                touchStartY = 0;
+                touchMoved = false;
+            }, { passive: true });
 
-            // Обработка клика мышью (для десктопа) — просто выбор
+            // Обработка мыши (десктоп) – клик = выбор
             imageContainer.addEventListener('click', () => {
                 toggleCurrentSelection();
             });
 
-            // ---- Клавиатура (стрелки вверх/вниз) ----
+            // Клавиатура (стрелки вверх/вниз)
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'ArrowDown') {
-                    e.preventDefault(); // предотвращаем скролл страницы
+                    e.preventDefault();
                     nextPhoto();
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
@@ -417,27 +431,25 @@
                 }
             });
 
-            // ---- Кнопка копирования (верхняя) ----
+            // Кнопка копирования
             copyBtn.addEventListener('click', showModal);
 
-            // ---- Модальное окно ----
+            // Модальное окно
             closeModalBtn.addEventListener('click', hideModal);
             copyModalBtn.addEventListener('click', () => {
                 copySelectedUrls();
-                // Можно оставить окно открытым или закрыть через пару секунд
                 setTimeout(hideModal, 1500);
             });
 
-            // Закрытие по клику на фон
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) hideModal();
             });
 
-            // Загружаем первое фото
+            // Загрузка первого фото
             loadImage(0);
             updateCopyButtonState();
 
-            // Дополнительно: на случай ошибки загрузки изображения
+            // Обработка ошибки загрузки
             currentImage.onerror = function() {
                 this.src = 'https://via.placeholder.com/600x800/ff6b6b/ffffff?text=Ошибка+загрузки';
             };
