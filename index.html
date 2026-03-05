@@ -483,13 +483,13 @@
                 finishDrag();
             });
 
-            // // Обработка клика (короткое нажатие)
-            // viewer.addEventListener('click', (e) => {
-            //     console.log("ad");
-            //     // Если был значительный drag, не считаем кликом
-            //     if (Math.abs(dragOffset) > 5) return;
-            //     toggleCurrentSelection();
-            // });
+            // Обработка клика (короткое нажатие)
+            viewer.addEventListener('click', (e) => {
+                console.log("ad");
+                // Если был значительный drag, не считаем кликом
+                if (Math.abs(dragOffset) > 5) return;
+                toggleCurrentSelection();
+            });
 
             // Клавиатура (стрелки вверх/вниз)
             window.addEventListener('keydown', (e) => {
