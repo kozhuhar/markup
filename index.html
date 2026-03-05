@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Instagram‑галерея с выбором</title>
+    <title>Вертикальная галерея (JS‑анимация)</title>
     <style>
         * {
             margin: 0;
@@ -54,54 +54,54 @@
 
         .viewer {
             flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #0a0a0a;
             position: relative;
-            touch-action: pan-y pinch-zoom; /* Запрещаем вертикальный свайп */
+            overflow: hidden;
+            background: #0a0a0a;
+            touch-action: none; /* полностью управляем касаниями */
         }
 
-        .image-container {
+        .photo-stack {
+            position: relative;
             width: 100%;
             height: 100%;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            cursor: pointer;
-            user-select: none;
-            position: relative;
+            justify-content: center;
+            will-change: transform;
         }
 
-        .image-wrapper {
-            position: relative;
+        .photo-item {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .photo-item img {
             width: 100%;
             max-width: calc((100vh - 70px) * 3 / 4);
             height: 100%;
             max-height: calc(100vh - 70px);
-            aspect-ratio: 3 / 4;
-            background: #1a1a1a;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.6);
-        }
-
-        .image-wrapper img {
-            width: 100%;
-            height: 100%;
             object-fit: contain;
             display: block;
-            pointer-events: none; /* клики идут на контейнер */
+            border-radius: 8px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.6);
+            background: #1a1a1a;
+            pointer-events: none;
         }
 
-        .image-wrapper.selected::after {
-            content: "✓";
+        .photo-item.selected::after {
+            content: "X";
             position: absolute;
             top: 16px;
             right: 16px;
             width: 40px;
             height: 40px;
-            background: #4CAF50;
+            background: #FF0000;
             color: white;
             border-radius: 50%;
             display: flex;
@@ -223,7 +223,7 @@
                 font-size: 14px;
                 padding: 8px 16px;
             }
-            .image-wrapper.selected::after {
+            .photo-item.selected::after {
                 width: 36px;
                 height: 36px;
                 font-size: 20px;
@@ -239,10 +239,10 @@
     </div>
 
     <div class="viewer" id="viewer">
-        <div class="image-container" id="imageContainer">
-            <div class="image-wrapper" id="imageWrapper">
-                <img id="currentImage" src="" alt="Фото">
-            </div>
+        <div class="photo-stack" id="photoStack">
+            <div class="photo-item" id="prevItem" style="transform: translateY(-100%);"></div>
+            <div class="photo-item" id="currentItem" style="transform: translateY(0);"></div>
+            <div class="photo-item" id="nextItem" style="transform: translateY(100%);"></div>
         </div>
         <div class="position-indicator" id="positionIndicator">1 / 1</div>
     </div>
@@ -267,51 +267,94 @@
                 'https://images.unsplash.com/photo-1501785888041-af3ef285b470',
                 'https://images.unsplash.com/photo-1518837695005-2083093ee35b',
                 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e',
-                'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07'
+                'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07',
+                'https://images.unsplash.com/photo-1506905925346-21bda4d32df4',
+                'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05'
             ];
 
+            // Состояние
             let currentIndex = 0;
             let selectedUrls = [];
 
             // DOM элементы
-            const imageWrapper = document.getElementById('imageWrapper');
-            const currentImage = document.getElementById('currentImage');
+            const stack = document.getElementById('photoStack');
+            const prevItem = document.getElementById('prevItem');
+            const currentItem = document.getElementById('currentItem');
+            const nextItem = document.getElementById('nextItem');
             const positionIndicator = document.getElementById('positionIndicator');
             const copyBtn = document.getElementById('copySelectedBtn');
             const modal = document.getElementById('modal');
             const selectedUrlsList = document.getElementById('selectedUrlsList');
             const closeModalBtn = document.getElementById('closeModalBtn');
             const copyModalBtn = document.getElementById('copyModalBtn');
-            const imageContainer = document.getElementById('imageContainer');
+            const viewer = document.getElementById('viewer');
 
-            // Переменные для свайпа
-            let touchStartX = 0;
-            let touchStartY = 0;
-            let touchMoved = false;      // был ли значительный сдвиг
-            let touchStartTime = 0;
-            const SWIPE_THRESHOLD = 30;   // минимальное расстояние для свайпа (по X)
-            const MAX_TAP_DURATION = 300;  // максимальная длительность касания для тапа (мс)
+            // Переменные для свайпа и анимации
+            let startY = 0;
+            let currentY = 0;
+            let isDragging = false;
+            let dragOffset = 0;       // текущее смещение в пикселях
+            let animating = false;     // идёт ли анимация переключения
+            let animationFrame = null;
+            let containerHeight = 0;   // высота viewer (будем обновлять при старте)
 
-            // Загрузка изображения по индексу
-            function loadImage(index) {
-                if (index < 0 || index >= images.length) return;
-                currentIndex = index;
-                currentImage.src = images[currentIndex];
-                positionIndicator.textContent = `${currentIndex+1} / ${images.length}`;
-                updateSelectedVisual();
+            // Порог переключения (в долях от высоты)
+            const SWIPE_THRESHOLD = 0.2; // 20% высоты
+
+            // Предзагрузка (кэш)
+            const imageCache = new Map();
+
+            function preloadImage(url) {
+                if (imageCache.has(url)) return imageCache.get(url);
+                const img = new Image();
+                img.src = url;
+                img.onerror = () => console.warn('Ошибка загрузки:', url);
+                imageCache.set(url, img);
+                return img;
             }
 
-            // Обновление галочки
-            function updateSelectedVisual() {
-                const currentUrl = images[currentIndex];
-                if (selectedUrls.includes(currentUrl)) {
-                    imageWrapper.classList.add('selected');
+            function preloadNeighbors(index) {
+                const indices = [index - 2, index - 1, index + 1, index + 2].filter(i => i >= 0 && i < images.length);
+                indices.forEach(i => preloadImage(images[i]));
+            }
+
+            // Обновление трёх позиций
+            function updateItems() {
+                if (currentIndex - 1 >= 0) {
+                    prevItem.innerHTML = `<img src="${images[currentIndex-1]}" alt="prev">`;
                 } else {
-                    imageWrapper.classList.remove('selected');
+                    prevItem.innerHTML = '';
+                }
+
+                currentItem.innerHTML = `<img src="${images[currentIndex]}" alt="current">`;
+
+                if (currentIndex + 1 < images.length) {
+                    nextItem.innerHTML = `<img src="${images[currentIndex+1]}" alt="next">`;
+                } else {
+                    nextItem.innerHTML = '';
+                }
+
+                updateSelectedVisual();
+                positionIndicator.textContent = `${currentIndex+1} / ${images.length}`;
+                preloadNeighbors(currentIndex);
+            }
+
+            function updateSelectedVisual() {
+                prevItem.classList.remove('selected');
+                currentItem.classList.remove('selected');
+                nextItem.classList.remove('selected');
+
+                if (currentIndex - 1 >= 0 && selectedUrls.includes(images[currentIndex-1])) {
+                    prevItem.classList.add('selected');
+                }
+                if (selectedUrls.includes(images[currentIndex])) {
+                    currentItem.classList.add('selected');
+                }
+                if (currentIndex + 1 < images.length && selectedUrls.includes(images[currentIndex+1])) {
+                    nextItem.classList.add('selected');
                 }
             }
 
-            // Переключение выбора текущего фото
             function toggleCurrentSelection() {
                 const url = images[currentIndex];
                 const idx = selectedUrls.indexOf(url);
@@ -330,129 +373,187 @@
                 copyBtn.disabled = count === 0;
             }
 
-            function showModal() {
+            // ---- Анимация с помощью requestAnimationFrame ----
+            function animateStack(from, to, duration, onComplete) {
+                if (animating) return;
+                animating = true;
+
+                const startTime = performance.now();
+                const delta = to - from;
+
+                function step(now) {
+                    const elapsed = now - startTime;
+                    let progress = Math.min(elapsed / duration, 1);
+                    // линейная интерполяция
+                    const currentPos = from + delta * progress;
+                    stack.style.transform = `translateY(${currentPos}px)`;
+
+                    if (progress < 1) {
+                        animationFrame = requestAnimationFrame(step);
+                    } else {
+                        // анимация завершена
+                        stack.style.transform = `translateY(${to}px)`;
+                        if (onComplete) onComplete();
+                        animating = false;
+                        animationFrame = null;
+                    }
+                }
+
+                animationFrame = requestAnimationFrame(step);
+            }
+
+            // Завершение перетаскивания
+            function finishDrag() {
+                if (!isDragging) return;
+                isDragging = false;
+
+                if (animating) return; // если уже анимация (маловероятно)
+
+                // Получаем текущую высоту контейнера
+                containerHeight = viewer.clientHeight;
+                const thresholdPx = containerHeight * SWIPE_THRESHOLD;
+
+                // Определяем направление и достаточно ли смещение
+                if (dragOffset > thresholdPx && currentIndex > 0) {
+                    // Свайп вниз (палец двигался вниз) -> предыдущее фото
+                    // Цель: сместить стек вниз на полную высоту (чтобы предыдущее фото встало в центр)
+                    const targetY = containerHeight; // смещение вниз
+                    animateStack(dragOffset, targetY, 300, () => {
+                        // Переключаем индекс и обновляем содержимое
+                        currentIndex--;
+                        updateItems();
+                        // Возвращаем стек в исходное положение (без анимации)
+                        stack.style.transform = 'translateY(0)';
+                    });
+                } else if (dragOffset < -thresholdPx && currentIndex < images.length - 1) {
+                    // Свайп вверх -> следующее фото
+                    const targetY = -containerHeight;
+                    animateStack(dragOffset, targetY, 300, () => {
+                        currentIndex++;
+                        updateItems();
+                        stack.style.transform = 'translateY(0)';
+                    });
+                } else {
+                    // Недостаточно смещения — возвращаем обратно
+                    animateStack(dragOffset, 0, 200, () => {});
+                }
+
+                dragOffset = 0;
+            }
+
+            // Обработчики касаний
+            viewer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (animating) return; // игнорируем во время анимации
+
+                const touch = e.touches[0];
+                startY = touch.clientY;
+                currentY = startY;
+                isDragging = true;
+                dragOffset = 0;
+
+                // Получаем высоту контейнера
+                containerHeight = viewer.clientHeight;
+            }, { passive: false });
+
+            viewer.addEventListener('touchmove', (e) => {
+                if (!isDragging || animating) return;
+                e.preventDefault();
+
+                const touch = e.touches[0];
+                currentY = touch.clientY;
+                const deltaY = currentY - startY;
+
+                dragOffset = deltaY;
+
+                // Двигаем стек прямо за пальцем
+                stack.style.transform = `translateY(${deltaY}px)`;
+            }, { passive: false });
+
+            viewer.addEventListener('touchend', (e) => {
+                if (Math.abs(dragOffset) < 5) {
+                    toggleCurrentSelection();
+                    e.preventDefault();
+                    finishDrag();
+                    return;
+                }
+                
+
+
+                if (!isDragging || animating) return;
+                e.preventDefault();
+                finishDrag();
+            });
+
+            viewer.addEventListener('touchcancel', (e) => {
+                if (!isDragging || animating) return;
+                finishDrag();
+            });
+
+            // // Обработка клика (короткое нажатие)
+            // viewer.addEventListener('click', (e) => {
+            //     console.log("ad");
+            //     // Если был значительный drag, не считаем кликом
+            //     if (Math.abs(dragOffset) > 5) return;
+            //     toggleCurrentSelection();
+            // });
+
+            // Клавиатура (стрелки вверх/вниз)
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (animating) return;
+                    if (currentIndex < images.length - 1) {
+                        // Анимируем переход вниз (следующее фото)
+                        containerHeight = viewer.clientHeight;
+                        animateStack(0, -containerHeight, 300, () => {
+                            currentIndex++;
+                            updateItems();
+                            stack.style.transform = 'translateY(0)';
+                        });
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (animating) return;
+                    if (currentIndex > 0) {
+                        containerHeight = viewer.clientHeight;
+                        animateStack(0, containerHeight, 300, () => {
+                            currentIndex--;
+                            updateItems();
+                            stack.style.transform = 'translateY(0)';
+                        });
+                    }
+                }
+            });
+
+            // Кнопка копирования
+            copyBtn.addEventListener('click', () => {
                 if (selectedUrls.length === 0) return;
                 selectedUrlsList.value = selectedUrls.join('\n');
                 modal.classList.add('active');
-            }
+            });
 
-            function hideModal() {
-                modal.classList.remove('active');
-            }
-
-            function copySelectedUrls() {
+            // Модальное окно
+            closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
+            copyModalBtn.addEventListener('click', () => {
                 selectedUrlsList.select();
                 document.execCommand('copy');
                 const originalText = copyModalBtn.textContent;
                 copyModalBtn.textContent = '✅ Скопировано!';
                 setTimeout(() => {
                     copyModalBtn.textContent = originalText;
+                    modal.classList.remove('active');
                 }, 1500);
-            }
-
-            // Навигация
-            function nextPhoto() {
-                if (currentIndex < images.length - 1) {
-                    loadImage(currentIndex + 1);
-                }
-            }
-
-            function prevPhoto() {
-                if (currentIndex > 0) {
-                    loadImage(currentIndex - 1);
-                }
-            }
-
-            // ---- Обработка касаний ----
-            imageContainer.addEventListener('touchstart', (e) => {
-                const touch = e.touches[0];
-                touchStartX = touch.clientX;
-                touchStartY = touch.clientY;
-                touchMoved = false;
-                touchStartTime = Date.now();
-                // Не отменяем событие, чтобы не блокировать скролл, но мы его контролируем через touch-action
-            }, { passive: true });
-
-            imageContainer.addEventListener('touchmove', (e) => {
-                if (!touchStartX) return;
-                const touch = e.touches[0];
-                const dx = Math.abs(touch.clientX - touchStartX);
-                const dy = Math.abs(touch.clientY - touchStartY);
-                // Если движение по X превышает порог и больше, чем по Y (горизонтальный свайп)
-                if (dx > SWIPE_THRESHOLD && dx > dy) {
-                    touchMoved = true;
-                    // Предотвращаем скролл страницы только при явном горизонтальном свайпе
-                    e.preventDefault();
-                }
-            }, { passive: false });
-
-            imageContainer.addEventListener('touchend', (e) => {
-                if (!touchStartX) return;
-
-                const touchEnd = e.changedTouches[0];
-                const dx = touchEnd.clientX - touchStartX;
-                const dy = touchEnd.clientY - touchStartY;
-                const absDx = Math.abs(dx);
-                const absDy = Math.abs(dy);
-                const touchDuration = Date.now() - touchStartTime;
-
-                // Если было значительное движение по X и это был горизонтальный свайп
-                if (absDx > SWIPE_THRESHOLD && absDx > absDy) {
-                    // Свайп
-                    if (dx > 0) {
-                        prevPhoto(); // свайп вправо → предыдущее
-                    } else {
-                        nextPhoto(); // свайп влево → следующее
-                    }
-                } else if (!touchMoved && touchDuration < MAX_TAP_DURATION) {
-                    // Это короткий тап без перемещения – выбираем фото
-                    toggleCurrentSelection();
-                }
-
-                // Сброс
-                touchStartX = 0;
-                touchStartY = 0;
-                touchMoved = false;
-            }, { passive: true });
-
-            // Обработка мыши (десктоп) – клик = выбор
-            imageContainer.addEventListener('click', () => {
-                toggleCurrentSelection();
-            });
-
-            // Клавиатура (стрелки вверх/вниз)
-            window.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    nextPhoto();
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    prevPhoto();
-                }
-            });
-
-            // Кнопка копирования
-            copyBtn.addEventListener('click', showModal);
-
-            // Модальное окно
-            closeModalBtn.addEventListener('click', hideModal);
-            copyModalBtn.addEventListener('click', () => {
-                copySelectedUrls();
-                setTimeout(hideModal, 1500);
             });
 
             modal.addEventListener('click', (e) => {
-                if (e.target === modal) hideModal();
+                if (e.target === modal) modal.classList.remove('active');
             });
 
-            // Загрузка первого фото
-            loadImage(0);
+            // Инициализация
+            updateItems();
             updateCopyButtonState();
-
-            // Обработка ошибки загрузки
-            currentImage.onerror = function() {
-                this.src = 'https://via.placeholder.com/600x800/ff6b6b/ffffff?text=Ошибка+загрузки';
-            };
+            preloadNeighbors(currentIndex);
         })();
     </script>
 </body>
